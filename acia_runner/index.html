@@ -67,6 +67,9 @@ canvas{display:block;cursor:pointer;image-rendering:pixelated;image-rendering:cr
 </div>
 
 <script>
+const SUPABASE_URL = 'https://khbxacyoagdvlguwmpid.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoYnhhY3lvYWdkdmxndXdtcGlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyOTc4NzUsImV4cCI6MjA5NDg3Mzg3NX0.F_FZAsGLRhIGpnu3nVWCGPeoMlsDvZ0Tjf-qU0IKTIs';
+
 const IMG = {
   f01:"assets/personagem_01.png",
   f02:"assets/personagem_02.png",
@@ -169,22 +172,48 @@ setTimeout(()=>{ if(loadCount<totalImgs){ loadCount=totalImgs; gameInit(); } }, 
 // ══════════════════════════════════════════
 //  RANKING
 // ══════════════════════════════════════════
-function getRanking(){ try{return JSON.parse(localStorage.getItem('csf_rank')||'[]');}catch(e){return[];} }
-function saveRanking(r){ try{localStorage.setItem('csf_rank',JSON.stringify(r));}catch(e){} }
-function addScore(name,dist,coins){
-  const r = getRanking();
-  r.push({name:name.toUpperCase().slice(0,16), dist:Math.floor(dist), coins});
-  r.sort((a,b)=>b.dist-a.dist);
-  saveRanking(r.slice(0,20));
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer '+SUPABASE_KEY,
+  'Content-Type': 'application/json'
+};
+
+function getRankingLocal(){ try{return JSON.parse(localStorage.getItem('csf_rank')||'[]');}catch(e){return[];} }
+function saveRankingLocal(r){ try{localStorage.setItem('csf_rank',JSON.stringify(r));}catch(e){} }
+
+async function fetchScores(){
+  try{
+    const res = await fetch(SUPABASE_URL+'/rest/v1/scores?select=name,dist,coins&order=dist.desc&limit=20',{headers:SB_HEADERS});
+    if(!res.ok) throw new Error();
+    return await res.json();
+  }catch(e){
+    return getRankingLocal();
+  }
 }
-function showRanking(){
-  const r = getRanking();
+
+async function postScore(name,dist,coins){
+  const entry = {name:name.toUpperCase().slice(0,16), dist:Math.floor(dist), coins};
+  // salva local como fallback
+  const r = getRankingLocal();
+  r.push(entry); r.sort((a,b)=>b.dist-a.dist); saveRankingLocal(r.slice(0,20));
+  try{
+    await fetch(SUPABASE_URL+'/rest/v1/scores',{
+      method:'POST',
+      headers:{...SB_HEADERS,'Prefer':'return=minimal'},
+      body:JSON.stringify(entry)
+    });
+  }catch(e){}
+}
+
+async function showRanking(){
+  document.getElementById('rankOverlay').style.display='flex';
+  gamePaused=true;
   const body = document.getElementById('rankBody');
+  body.innerHTML='<tr><td colspan="4" style="color:#adf;padding:14px">Carregando...</td></tr>';
+  const r = await fetchScores();
   body.innerHTML = r.length
     ? r.slice(0,15).map((e,i)=>`<tr><td>${i+1}</td><td>${e.name}</td><td>${e.dist}m</td><td>🪙${e.coins}</td></tr>`).join('')
     : '<tr><td colspan="4" style="color:#555;padding:12px">Sem recordes ainda. Seja o primeiro!</td></tr>';
-  document.getElementById('rankOverlay').style.display='flex';
-  gamePaused=true;
 }
 document.getElementById('rankClose').onclick = ()=>{
   document.getElementById('rankOverlay').style.display='none';
@@ -199,10 +228,11 @@ function askName(dist,coins){
   document.getElementById('nameOverlay').style.display='flex';
   setTimeout(()=>document.getElementById('nameInput').focus(),120);
 }
-function confirmName(){
+async function confirmName(){
   const n = (document.getElementById('nameInput').value.trim()||'ENTREGADOR');
-  addScore(n,pendingDist,pendingCoins);
   document.getElementById('nameOverlay').style.display='none';
+  await postScore(n,pendingDist,pendingCoins);
+  await loadTopScore();
   state='gameover';
 }
 document.getElementById('nameConfirm').onclick = confirmName;
@@ -677,10 +707,9 @@ function drawTitle(){
     ctx.shadowBlur=0;
   }
 
-  const top=getRanking();
-  if(top.length){
+  if(topScore){
     ctx.font='bold 13px monospace';ctx.fillStyle='#ffd700';
-    ctx.fillText('🏆 '+top[0].name+' — '+top[0].dist+'m  🪙'+top[0].coins,GW/2,GH*0.60+66);
+    ctx.fillText('🏆 '+topScore.name+' — '+topScore.dist+'m  🪙'+topScore.coins,GW/2,GH*0.60+66);
   }
 
   ctx.font='13px monospace';ctx.fillStyle='rgba(170,215,255,.85)';
@@ -707,8 +736,8 @@ function drawGameOver(){
   ctx.fillText('ENTREGA FINALIZADA!',GW/2,92);
   ctx.shadowBlur=0;
 
-  const top=getRanking();
-  const best=top.length?top[0].dist:0;
+  const top=getRankingLocal();
+  const best=topScore?topScore.dist:(top.length?top[0].dist:0);
   ctx.font='18px monospace';ctx.fillStyle='#eee';
   ctx.fillText('📦 '+Math.floor(distance)+'m percorridos',GW/2,134);
   ctx.fillText('🪙 '+coinsCount+' moedas',GW/2,162);
@@ -773,8 +802,15 @@ function draw(){
 
 function loop(){update();draw();requestAnimationFrame(loop);}
 
+let topScore = null;
+async function loadTopScore(){
+  const r = await fetchScores();
+  topScore = r.length ? r[0] : null;
+}
+
 function gameInit(){
   document.getElementById('pauseBtn').style.display='none';
+  loadTopScore();
   loop();
 }
 </script>
