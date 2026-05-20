@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Corrida Sem Fim – A&CIA Móveis</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#111;display:flex;align-items:center;
+  justify-content:center;overflow:hidden;touch-action:none;font-family:monospace}
+#wrap{position:relative}
+canvas{display:block;cursor:pointer;image-rendering:pixelated;image-rendering:crisp-edges}
+#pauseBtn{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);
+  border:2px solid rgba(255,255,255,.4);color:#fff;font:bold 16px monospace;
+  width:40px;height:40px;border-radius:8px;cursor:pointer;
+  display:none;align-items:center;justify-content:center;z-index:9}
+#pauseBtn:hover{background:rgba(0,80,200,.7)}
+/* Ranking overlay */
+#rankOverlay{position:absolute;inset:0;background:rgba(0,5,30,.93);
+  display:none;flex-direction:column;align-items:center;
+  justify-content:flex-start;padding-top:20px;z-index:20;overflow-y:auto}
+#rankOverlay h2{color:#FFD700;font:bold 20px monospace;
+  text-shadow:0 0 12px #FFD700;margin-bottom:10px}
+#rankTable{width:86%;border-collapse:collapse;margin-bottom:14px}
+#rankTable th{color:#adf;font:12px monospace;padding:5px 8px;
+  border-bottom:1px solid #336;text-align:center}
+#rankTable td{color:#eee;font:12px monospace;padding:4px 8px;
+  text-align:center;border-bottom:1px solid #223}
+#rankTable tr:nth-child(1) td{color:#FFD700;font-weight:bold}
+#rankTable tr:nth-child(2) td{color:#C0C0C0}
+#rankTable tr:nth-child(3) td{color:#CD7F32}
+#rankClose{background:#113388;border:2px solid #4466cc;color:#fff;
+  font:bold 14px monospace;padding:8px 28px;border-radius:8px;cursor:pointer}
+#rankClose:hover{background:#2255bb}
+/* Name input overlay */
+#nameOverlay{position:absolute;inset:0;background:rgba(0,5,30,.9);
+  display:none;flex-direction:column;align-items:center;
+  justify-content:center;z-index:21;gap:14px}
+#nameOverlay p{color:#fff;font:bold 17px monospace;text-align:center;line-height:1.5}
+#nameInput{font:bold 18px monospace;padding:10px 18px;border-radius:8px;
+  border:2px solid #4466cc;background:#0a1540;color:#fff;
+  width:240px;text-align:center;outline:none}
+#nameConfirm{background:#1a44cc;border:2px solid #6688ff;color:#fff;
+  font:bold 16px monospace;padding:10px 32px;border-radius:8px;cursor:pointer}
+#nameConfirm:hover{background:#3366ee}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <button id="pauseBtn">⏸</button>
+  <div id="rankOverlay">
+    <h2>🏆 RANKING — CORRIDA SEM FIM</h2>
+    <table id="rankTable">
+      <thead><tr><th>#</th><th>JOGADOR</th><th>DISTÂNCIA</th><th>MOEDAS</th></tr></thead>
+      <tbody id="rankBody"></tbody>
+    </table>
+    <button id="rankClose">FECHAR</button>
+  </div>
+  <div id="nameOverlay">
+    <p>🏁 CORRIDA FINALIZADA!<br>
+       <span id="nameScore" style="color:#FFD700;font-size:20px"></span></p>
+    <p style="color:#adf;font:14px monospace">Digite seu nome para o ranking:</p>
+    <input id="nameInput" maxlength="16" placeholder="SEU NOME" autocomplete="off" spellcheck="false">
+    <button id="nameConfirm">SALVAR ✔</button>
+  </div>
+</div>
+
+<script>
+const IMG = {
+  f01:"assets/personagem_01.png",
+  f02:"assets/personagem_02.png",
+  f03:"assets/personagem_03.png",
+  f04:"assets/personagem_04.png",
+  f05:"assets/personagem_05.png",
+  f06:"assets/personagem_06.png",
+  escudo:"assets/escudo.png",
+  efeito:"assets/efeito_escudo.png",
+  life:"assets/coracao.png",
+  titulo:"assets/titulo.png",
+  buraco:"assets/buraco.png",
+  cone:"assets/cone.png",
+  pedra:"assets/pedra.png",
+  moeda:"assets/moeda.png",
+  inicio:"assets/inicio.png",
+  cidade:"assets/cidade.png",
+  buster:"assets/buster_velocidade.png",
+  balao:"assets/balao_de_fala.png",
+  quadro:"assets/quadro_coracao.png",
+};
+
+// ══════════════════════════════════════════
+//  CANVAS
+// ══════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const GW = 800, GH = 380;
+let SCALE = 1;
+function resize(){
+  SCALE = Math.min(window.innerWidth/GW, window.innerHeight/GH, 2);
+  canvas.width = GW; canvas.height = GH;
+  canvas.style.width  = (GW*SCALE)+'px';
+  canvas.style.height = (GH*SCALE)+'px';
+  const wrap = document.getElementById('wrap');
+  wrap.style.width  = (GW*SCALE)+'px';
+  wrap.style.height = (GH*SCALE)+'px';
+}
+resize(); window.addEventListener('resize', resize);
+
+// ══════════════════════════════════════════
+//  CONSTANTS
+// ══════════════════════════════════════════
+const GROUND_Y = 269;   // feet on road middle lane
+const CHAR_X   = 150;
+const GRAVITY  = 0.62;
+const JUMP_VY  = -13.2;
+const CHAR_W   = 90, CHAR_H = 106;
+const COL_W    = 52, COL_H  = 88;
+
+// ══════════════════════════════════════════
+//  IMAGE LOADING
+//  cidade and inicio are full-scene PNGs — NO black removal
+//  sprites/items have black bg — remove it
+// ══════════════════════════════════════════
+const loaded = {};
+const REMOVE_BLACK = []; // transparency baked in server-side
+let loadCount = 0;
+const totalImgs = Object.keys(IMG).length;
+
+function removeBlack(img, thresh=55){
+  const oc = document.createElement('canvas');
+  oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+  const ox = oc.getContext('2d');
+  ox.drawImage(img,0,0);
+  const id = ox.getImageData(0,0,oc.width,oc.height);
+  const d  = id.data;
+  const W = oc.width;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2];
+    // Pure / near-black → fully transparent
+    if(r<thresh && g<thresh && b<thresh){
+      d[i+3]=0; continue;
+    }
+    // Semi-dark edge pixels → partial alpha for smooth edges
+    const brightness = (r+g+b)/3;
+    if(brightness < thresh*2.2){
+      const sat = Math.max(r,g,b) - Math.min(r,g,b);
+      if(sat < 30){
+        // Low saturation dark = shadow/edge → fade out
+        d[i+3] = Math.round((brightness/(thresh*2.2))*255);
+      }
+    }
+  }
+  ox.putImageData(id,0,0);
+  return oc;
+}
+
+Object.entries(IMG).forEach(([k,src])=>{
+  const im = new Image();
+  im.onload = im.onerror = ()=>{
+    loaded[k] = REMOVE_BLACK.includes(k) ? removeBlack(im) : im;
+    if(++loadCount >= totalImgs) gameInit();
+  };
+  im.src = src;
+});
+setTimeout(()=>{ if(loadCount<totalImgs){ loadCount=totalImgs; gameInit(); } }, 10000);
+
+// ══════════════════════════════════════════
+//  RANKING
+// ══════════════════════════════════════════
+function getRanking(){ try{return JSON.parse(localStorage.getItem('csf_rank')||'[]');}catch(e){return[];} }
+function saveRanking(r){ try{localStorage.setItem('csf_rank',JSON.stringify(r));}catch(e){} }
+function addScore(name,dist,coins){
+  const r = getRanking();
+  r.push({name:name.toUpperCase().slice(0,16), dist:Math.floor(dist), coins});
+  r.sort((a,b)=>b.dist-a.dist);
+  saveRanking(r.slice(0,20));
+}
+function showRanking(){
+  const r = getRanking();
+  const body = document.getElementById('rankBody');
+  body.innerHTML = r.length
+    ? r.slice(0,15).map((e,i)=>`<tr><td>${i+1}</td><td>${e.name}</td><td>${e.dist}m</td><td>🪙${e.coins}</td></tr>`).join('')
+    : '<tr><td colspan="4" style="color:#555;padding:12px">Sem recordes ainda. Seja o primeiro!</td></tr>';
+  document.getElementById('rankOverlay').style.display='flex';
+  gamePaused=true;
+}
+document.getElementById('rankClose').onclick = ()=>{
+  document.getElementById('rankOverlay').style.display='none';
+  gamePaused=false;
+};
+
+let pendingDist=0, pendingCoins=0;
+function askName(dist,coins){
+  pendingDist=dist; pendingCoins=coins;
+  document.getElementById('nameScore').textContent = Math.floor(dist)+'m  🪙'+coins;
+  document.getElementById('nameInput').value='';
+  document.getElementById('nameOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('nameInput').focus(),120);
+}
+function confirmName(){
+  const n = (document.getElementById('nameInput').value.trim()||'ENTREGADOR');
+  addScore(n,pendingDist,pendingCoins);
+  document.getElementById('nameOverlay').style.display='none';
+  state='gameover';
+}
+document.getElementById('nameConfirm').onclick = confirmName;
+document.getElementById('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmName();});
+
+// ══════════════════════════════════════════
+//  GAME STATE
+// ══════════════════════════════════════════
+let state='title'; // title|playing|paused|gameover
+let gamePaused=false;
+let frame=0;
+let fxList=[];
+
+let player,obstacles,coins,pickups,busterPickups;
+let distance,coinsCount;
+let speed,bgX;
+let lives;
+let hasShield,shieldTimer;
+let invTimer;
+let hasBuster,busterTimer;
+let busterSpeedBonus;
+let balloon,balloonTimer;
+let obsTimer,coinTimer,pickupTimer,busterPickupTimer;
+let deathTimer;
+let nameAsked=false;
+
+function resetGame(){
+  player={x:CHAR_X,y:GROUND_Y,vy:0,jumping:false,dead:false,fr:0,ft:0};
+  obstacles=[];coins=[];pickups=[];busterPickups=[];
+  distance=0;coinsCount=0;
+  speed=5.5;bgX=0;
+  lives=3;
+  hasShield=false;shieldTimer=0;
+  invTimer=0;
+  hasBuster=false;busterTimer=0;busterSpeedBonus=0;
+  balloon=false;balloonTimer=0;
+  obsTimer=70;coinTimer=50;pickupTimer=280;busterPickupTimer=380;
+  deathTimer=0;fxList=[];nameAsked=false;
+  state='playing';
+  document.getElementById('pauseBtn').style.display='flex';
+  document.getElementById('pauseBtn').textContent='⏸';
+  gamePaused=false;
+}
+
+// ══════════════════════════════════════════
+//  INPUT
+// ══════════════════════════════════════════
+function doJump(){
+  if(state==='title'||state==='gameover'){resetGame();return;}
+  if(state==='paused'){togglePause();return;}
+  if(state==='playing'&&!player.jumping&&!player.dead){
+    player.vy=JUMP_VY; player.jumping=true;
+  }
+}
+function togglePause(){
+  if(state==='playing'){state='paused';gamePaused=true;document.getElementById('pauseBtn').textContent='▶';}
+  else if(state==='paused'){state='playing';gamePaused=false;document.getElementById('pauseBtn').textContent='⏸';}
+}
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();doJump();}
+  if(e.code==='KeyP'||e.code==='Escape') togglePause();
+  if(e.code==='KeyR') showRanking();
+});
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();doJump();},{passive:false});
+document.getElementById('pauseBtn').addEventListener('click',e=>{e.stopPropagation();togglePause();});
+
+// ══════════════════════════════════════════
+//  OBSTACLES / ITEMS
+// ══════════════════════════════════════════
+const OBS_TYPES={
+  cone: {w:40,h:56},
+  pedra:{w:60,h:40},
+  buraco:{w:88,h:22},
+};
+function spawnObs(){
+  const types=Object.keys(OBS_TYPES);
+  const t=types[Math.floor(Math.random()*types.length)];
+  const d=OBS_TYPES[t];
+  obstacles.push({type:t,x:GW+20,y:GROUND_Y-d.h+(t==='buraco'?3:0),w:d.w,h:d.h});
+}
+function spawnCoins(){
+  if(obstacles.some(o=>o.x>GW-60&&o.x<GW+250)){coinTimer=35;return;}
+  const high=Math.random()<0.3;
+  const y=high?GROUND_Y-145:GROUND_Y-65;
+  const n=Math.random()<0.4?3:1;
+  for(let i=0;i<n;i++) coins.push({x:GW+20+i*40,y,w:26,h:26});
+}
+
+function spawnBuster(){
+  if(obstacles.some(o=>o.x>GW-80)){busterPickupTimer=120;return;}
+  busterPickups.push({x:GW+20,y:GROUND_Y-98,w:38,h:48});
+}
+function spawnPickup(){
+  if(obstacles.some(o=>o.x>GW-80)){pickupTimer=150;return;}
+  pickups.push({x:GW+20,y:GROUND_Y-90,w:40,h:48});
+}
+
+// ══════════════════════════════════════════
+//  COLLISION
+// ══════════════════════════════════════════
+function pRect(){return{x:player.x-COL_W/2+6,y:player.y-COL_H,w:COL_W-6,h:COL_H};}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function fx(x,y,t,c){fxList.push({x,y,t,c,life:50,vy:-1.1});}
+
+// ══════════════════════════════════════════
+//  UPDATE
+// ══════════════════════════════════════════
+function update(){
+  frame++;
+  if(state==='playing'&&!gamePaused) updateGame();
+}
+
+function updateGame(){
+  speed=Math.min(5.5+Math.floor(distance/500)*0.8,18)+(hasBuster?busterSpeedBonus:0);
+  distance+=speed*0.09;
+
+  if(!player.dead){
+    player.vy+=GRAVITY; player.y+=player.vy;
+    if(player.y>=GROUND_Y){player.y=GROUND_Y;player.vy=0;player.jumping=false;}
+
+    player.ft++;
+    const fps=Math.min(6+Math.floor(speed),14);
+    if(player.ft>=Math.round(60/fps)){player.ft=0;player.fr=(player.fr+1)%6;}
+
+    if(hasShield){shieldTimer--;if(shieldTimer<=0)hasShield=false;}
+    if(invTimer>0) invTimer--;
+    if(hasBuster){
+      busterTimer--;
+      if(busterTimer<=0){hasBuster=false;busterSpeedBonus=0;}
+    }
+    if(balloonTimer>0) balloonTimer--;
+    else balloon=false;
+
+    obsTimer--;
+    if(obsTimer<=0){spawnObs();obsTimer=Math.max(42,88-Math.floor(distance/450)*5)+Math.floor(Math.random()*25);}
+    coinTimer--;
+    if(coinTimer<=0){spawnCoins();coinTimer=40+Math.floor(Math.random()*25);}
+    pickupTimer--;
+    if(pickupTimer<=0){spawnPickup();pickupTimer=280+Math.floor(Math.random()*200);}
+    busterPickupTimer--;
+    if(busterPickupTimer<=0){spawnBuster();busterPickupTimer=350+Math.floor(Math.random()*180);}
+  } else {
+    deathTimer++;
+    if(deathTimer===45&&!nameAsked){nameAsked=true;askName(distance,coinsCount);}
+    if(deathTimer>160) state='gameover';
+  }
+
+  const sp=speed;
+  obstacles.forEach(o=>o.x-=sp); coins.forEach(c=>c.x-=sp); pickups.forEach(p=>p.x-=sp); busterPickups.forEach(b=>b.x-=sp);
+  obstacles=obstacles.filter(o=>o.x>-120);
+  coins=coins.filter(c=>c.x>-60);
+  pickups=pickups.filter(p=>p.x>-60);
+  busterPickups=busterPickups.filter(b=>b.x>-60);
+  fxList.forEach(f=>{f.y+=f.vy;f.life--;});
+  fxList=fxList.filter(f=>f.life>0);
+
+  // BG scroll — cidade is full-scene, scroll it
+  bgX-=sp*0.3;
+  const ci=loaded.cidade;
+  if(ci){
+    const ih=ci.naturalHeight||953, iw=ci.naturalWidth||4832;
+    const dw=iw*(GH/ih);
+    if(bgX<-dw) bgX+=dw;
+  }
+
+  if(player.dead) return;
+  const pr=pRect();
+  for(const o of obstacles){
+    if(invTimer>0) continue;
+    if(hit(pr,{x:o.x,y:o.y,w:o.w,h:o.h})){
+      if(hasShield){
+        hasShield=false;shieldTimer=0;
+        obstacles=obstacles.filter(x=>x!==o);
+        fx(o.x+o.w/2,o.y-20,'BLOQUEADO!','#0ff');
+      } else if(invTimer<=0){
+        lives--;
+        invTimer=110;
+        fx(player.x,player.y-60,'-1 ♥','#ff4444');
+        if(lives<=0){player.dead=true;}
+      }
+      break;
+    }
+  }
+  coins=coins.filter(c=>{
+    if(hit(pr,{x:c.x,y:c.y,w:c.w,h:c.h})){coinsCount++;fx(c.x,c.y-10,'+moeda','#FFD700');return false;}
+    return true;
+  });
+  pickups=pickups.filter(p=>{
+    if(hit(pr,{x:p.x,y:p.y,w:p.w,h:p.h})){hasShield=true;shieldTimer=300;fx(p.x,p.y-20,'ESCUDO!','#0ff');return false;}
+    return true;
+  });
+  busterPickups=busterPickups.filter(b=>{
+    if(hit(pr,{x:b.x,y:b.y,w:b.w,h:b.h})){
+      hasBuster=true; busterTimer=240; busterSpeedBonus=3.5;
+      balloon=true; balloonTimer=180;
+      fx(b.x,b.y-20,'TURBO!','#FFD700');
+      return false;
+    }
+    return true;
+  });
+}
+
+// ══════════════════════════════════════════
+//  DRAW BACKGROUND (gameplay)
+// ══════════════════════════════════════════
+function drawBG(scrollX){
+  const ci=loaded.cidade;
+  if(!ci){ctx.fillStyle='#5ab0ea';ctx.fillRect(0,0,GW,GH);return;}
+  const ih=ci.naturalHeight||953, iw=ci.naturalWidth||4832;
+  const sc=GH/ih;
+  const dw=iw*sc;
+  let x=scrollX;
+  if(x>0) x-=dw;
+  while(x<GW){ctx.drawImage(ci,x,0,dw,GH);x+=dw;}
+}
+
+// ══════════════════════════════════════════
+//  DRAW TITLE BACKGROUND (static inicio)
+// ══════════════════════════════════════════
+function drawTitleBG(){
+  const im=loaded.inicio;
+  if(!im){ctx.fillStyle='#1a3060';ctx.fillRect(0,0,GW,GH);return;}
+  const ih=im.naturalHeight||954, iw=im.naturalWidth||2442;
+  // Scale to cover full canvas height, anchor left
+  const sc=GH/ih;
+  const dw=iw*sc;
+  ctx.drawImage(im,0,0,dw,GH);
+}
+
+// ══════════════════════════════════════════
+//  DRAW CHARACTER
+// ══════════════════════════════════════════
+function drawPlayer(){
+  const frameKey='f0'+(player.fr+1);
+  const im=loaded[frameKey];
+  if(!im) return;
+
+  ctx.save();
+  if((player.dead || invTimer>0) && frame%5<2) ctx.globalAlpha=0.15;
+
+  const dy=player.y-CHAR_H;
+  // Speed trail when buster active
+  if(hasBuster){
+    for(let t=1;t<=3;t++){
+      ctx.save();
+      ctx.globalAlpha=0.15*(4-t);
+      ctx.drawImage(im,player.x-CHAR_W/2-t*14,dy,CHAR_W,CHAR_H);
+      ctx.restore();
+    }
+  }
+  ctx.drawImage(im,player.x-CHAR_W/2,dy,CHAR_W,CHAR_H);
+
+  // Shield effect
+  if(hasShield){
+    const ef=loaded.efeito;
+    const pulse=1+Math.sin(frame*0.15)*0.1;
+    const sz=110*pulse;
+    ctx.globalAlpha=(0.5+Math.sin(frame*0.12)*0.18);
+    if(ef) ctx.drawImage(ef,player.x-sz/2,player.y-CHAR_H*0.5-sz/2,sz,sz);
+    else{
+      ctx.strokeStyle='#0ff';ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(player.x,player.y-CHAR_H/2,52,0,Math.PI*2);ctx.stroke();
+    }
+  }
+  // Speech balloon "Bota pra torar!!!"
+  if(balloon && balloonTimer>0){
+    const ba=loaded.balao;
+    if(ba){
+      const alpha=Math.min(1, balloonTimer/20);
+      const scale=balloonTimer>160?1:0.85+0.15*(balloonTimer/160);
+      const bw=120*scale, bh=63*scale;
+      const bx=player.x-bw*0.25;
+      const by=player.y-CHAR_H-bh-6;
+      ctx.save();
+      ctx.globalAlpha=alpha;
+      ctx.drawImage(ba,bx,by,bw,bh);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+//  DRAW OBSTACLES
+// ══════════════════════════════════════════
+function drawObs(){
+  for(const o of obstacles){
+    const im=loaded[o.type];
+    if(im) ctx.drawImage(im,o.x,o.y,o.w,o.h);
+    else{ctx.fillStyle='#e55';ctx.fillRect(o.x,o.y,o.w,o.h);}
+  }
+}
+
+// ══════════════════════════════════════════
+//  DRAW COINS
+// ══════════════════════════════════════════
+function drawCoins(){
+  const mi=loaded.moeda;
+  for(const c of coins){
+    const bob=Math.sin(frame*0.12+c.x*0.04)*3;
+    if(mi) ctx.drawImage(mi,c.x,c.y+bob,c.w,c.h);
+    else{ctx.fillStyle='#FFD700';ctx.beginPath();ctx.arc(c.x+13,c.y+13+bob,12,0,Math.PI*2);ctx.fill();}
+  }
+}
+
+// ══════════════════════════════════════════
+//  DRAW PICKUPS
+// ══════════════════════════════════════════
+function drawPickups(){
+  // Shield pickups
+  const si=loaded.escudo;
+  for(const p of pickups){
+    const bob=Math.sin(frame*0.1)*5;
+    ctx.save();ctx.shadowColor='#0ff';ctx.shadowBlur=20;
+    if(si) ctx.drawImage(si,p.x,p.y+bob,p.w,p.h);
+    ctx.restore();
+  }
+  // Buster (speed bolt) pickups
+  const bi=loaded.buster;
+  for(const b of busterPickups){
+    const bob=Math.sin(frame*0.13+b.x*0.03)*5;
+    const pulse=0.88+Math.sin(frame*0.18)*0.12;
+    ctx.save();
+    ctx.shadowColor='#FFD700';ctx.shadowBlur=22;
+    ctx.globalAlpha=pulse;
+    if(bi) ctx.drawImage(bi,b.x,b.y+bob,b.w,b.h);
+    else{ctx.fillStyle='#FFD700';ctx.fillRect(b.x,b.y+bob,b.w,b.h);}
+    ctx.restore();
+  }
+}
+
+// ══════════════════════════════════════════
+//  DRAW HUD
+// ══════════════════════════════════════════
+function drawHUD(){
+  // ── Hearts frame (QUADRO_CORAÇÃO) ──────────────────
+  const qi=loaded.quadro;
+  const qw=128, qh=44;
+  const qx=6, qy=4;
+  if(qi){
+    ctx.save(); ctx.globalAlpha=0.88;
+    ctx.drawImage(qi,qx,qy,qw,qh);
+    ctx.restore();
+  } else {
+    ctx.save(); ctx.fillStyle='rgba(40,40,60,0.75)';
+    ctx.beginPath();ctx.roundRect(qx,qy,qw,qh,10);ctx.fill();
+    ctx.restore();
+  }
+  // Hearts inside the box
+  const li=loaded.life;
+  for(let i=0;i<3;i++){
+    const hx=qx+10+i*38;
+    const hy=qy+5;
+    if(li){
+      ctx.save();
+      if(i>=lives) ctx.globalAlpha=0.2;
+      const pulse=(lives===1&&i===0)?(1+Math.sin(frame*0.2)*0.13):1;
+      const hw=30*pulse, hh=30*pulse;
+      ctx.drawImage(li,hx-(hw-30)/2,hy-(hh-30)/2,hw,hh);
+      ctx.restore();
+    } else {
+      ctx.fillStyle=i<lives?'#f33':'rgba(255,50,50,0.2)';
+      ctx.font='22px monospace'; ctx.textAlign='left';
+      ctx.fillText('❤',hx,hy+22);
+    }
+  }
+
+  // ── Distance (center top) ──────────────────────────
+  ctx.save();
+  ctx.font='bold 17px monospace';ctx.textAlign='center';
+  ctx.shadowColor='#000';ctx.shadowBlur=5;ctx.fillStyle='#fff';
+  ctx.fillText('📦 '+Math.floor(distance)+'m',GW/2,24);
+  ctx.restore();
+
+  // ── Coins (top right) ──────────────────────────────
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.beginPath();ctx.roundRect(GW-118,4,108,32,8);ctx.fill();
+  ctx.textAlign='right';ctx.font='bold 15px monospace';
+  const mi=loaded.moeda; if(mi) ctx.drawImage(mi,GW-116,7,20,22);
+  ctx.fillStyle='#FFD700'; ctx.shadowColor='#000'; ctx.shadowBlur=3;
+  ctx.fillText(coinsCount,GW-12,24);
+  ctx.restore();
+
+  // ── Speed level badge ──────────────────────────────
+  const baseSpeed=5.5+Math.floor(distance/500)*0.8;
+  const lvl=Math.max(1,Math.floor((baseSpeed-5.5)/0.8)+1);
+  if(lvl>1){
+    ctx.save();ctx.font='bold 12px monospace';ctx.textAlign='center';
+    ctx.fillStyle=lvl>6?'#ff4':lvl>3?'#fa0':'#aff';
+    ctx.shadowColor='#000';ctx.shadowBlur=3;
+    ctx.fillText('VEL '+lvl+'x ⚡',GW/2,42);
+    ctx.restore();
+  }
+
+  // ── Shield bar ─────────────────────────────────────
+  let barY=50;
+  if(hasShield){
+    const pct=shieldTimer/300;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.roundRect(8,barY,128,10,4);ctx.fill();
+    const g1=ctx.createLinearGradient(8,0,136,0);
+    g1.addColorStop(0,'#0ff');g1.addColorStop(1,'#008fff');
+    ctx.fillStyle=g1;ctx.beginPath();ctx.roundRect(8,barY,128*pct,10,4);ctx.fill();
+    ctx.strokeStyle='rgba(0,255,255,0.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(8,barY,128,10,4);ctx.stroke();
+    ctx.font='10px monospace';ctx.fillStyle='#0ff';ctx.textAlign='left';
+    ctx.fillText('🛡 ESCUDO',8,barY+22);
+    ctx.restore();
+    barY+=28;
+  }
+
+  // ── Buster bar ─────────────────────────────────────
+  if(hasBuster){
+    const pct=busterTimer/240;
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.roundRect(8,barY,128,10,4);ctx.fill();
+    const g2=ctx.createLinearGradient(8,0,136,0);
+    g2.addColorStop(0,'#FFD700');g2.addColorStop(1,'#ff8800');
+    ctx.fillStyle=g2;ctx.beginPath();ctx.roundRect(8,barY,128*pct,10,4);ctx.fill();
+    ctx.strokeStyle='rgba(255,200,0,0.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(8,barY,128,10,4);ctx.stroke();
+    ctx.font='10px monospace';ctx.fillStyle='#FFD700';ctx.textAlign='left';
+    ctx.fillText('⚡ TURBO',8,barY+22);
+    ctx.restore();
+  }
+
+  // ── Floating FX ────────────────────────────────────
+  for(const f of fxList){
+    ctx.save();ctx.globalAlpha=f.life/50;
+    ctx.font='bold 14px monospace';ctx.textAlign='center';
+    ctx.shadowColor='#000';ctx.shadowBlur=3;
+    ctx.fillStyle=f.c;ctx.fillText(f.t,f.x,f.y);
+    ctx.restore();
+  }
+}
+
+
+
+// ══════════════════════════════════════════
+//  DRAW TITLE
+// ══════════════════════════════════════════
+function drawTitle(){
+  drawTitleBG();
+  // Subtle dark overlay only on the bottom half for legibility
+  const gr=ctx.createLinearGradient(0,GH*0.45,0,GH);
+  gr.addColorStop(0,'rgba(0,5,20,0)');
+  gr.addColorStop(1,'rgba(0,5,20,0.78)');
+  ctx.fillStyle=gr; ctx.fillRect(0,0,GW,GH);
+
+  // Logo title
+  const ti=loaded.titulo;
+  if(ti){
+    const tw=ti.width||ti.naturalWidth||780;
+    const th=ti.height||ti.naturalHeight||376;
+    const sc=Math.min(GW*0.82/tw, GH*0.52/th);
+    const dw=tw*sc, dh=th*sc;
+    ctx.drawImage(ti,GW/2-dw/2,10,dw,dh);
+  }
+
+  // Bottom panel
+  ctx.save();
+  ctx.fillStyle='rgba(0,8,50,.85)';
+  rrect(GW/2-195,GH*0.60,390,130,14);ctx.fill();
+  ctx.strokeStyle='rgba(30,140,255,.7)';ctx.lineWidth=2;ctx.stroke();
+
+  ctx.textAlign='center';
+  if(frame%52<28){
+    ctx.font='bold 18px monospace';ctx.fillStyle='#FFD700';
+    ctx.shadowColor='#FFD700';ctx.shadowBlur=10;
+    ctx.fillText('▶  ESPAÇO / TOQUE PARA JOGAR  ◀',GW/2,GH*0.60+36);
+    ctx.shadowBlur=0;
+  }
+
+  const top=getRanking();
+  if(top.length){
+    ctx.font='bold 13px monospace';ctx.fillStyle='#ffd700';
+    ctx.fillText('🏆 '+top[0].name+' — '+top[0].dist+'m  🪙'+top[0].coins,GW/2,GH*0.60+66);
+  }
+
+  ctx.font='13px monospace';ctx.fillStyle='rgba(170,215,255,.85)';
+  ctx.fillText('ESPAÇO = Pular  |  R = Ranking',GW/2,GH*0.60+92);
+  ctx.fillText('Pule sobre os obstáculos — 1 vida apenas!',GW/2,GH*0.60+114);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+//  DRAW GAME OVER
+// ══════════════════════════════════════════
+function drawGameOver(){
+  drawBG(bgX);
+  ctx.fillStyle='rgba(0,0,15,.75)';ctx.fillRect(0,0,GW,GH);
+
+  ctx.save();
+  ctx.fillStyle='rgba(5,8,55,.94)';
+  rrect(GW/2-215,50,430,268,18);ctx.fill();
+  ctx.strokeStyle='#cc4411';ctx.lineWidth=2;ctx.stroke();
+
+  ctx.textAlign='center';
+  ctx.font='bold 26px monospace';ctx.fillStyle='#ff6655';
+  ctx.shadowColor='#f00';ctx.shadowBlur=14;
+  ctx.fillText('ENTREGA FINALIZADA!',GW/2,92);
+  ctx.shadowBlur=0;
+
+  const top=getRanking();
+  const best=top.length?top[0].dist:0;
+  ctx.font='18px monospace';ctx.fillStyle='#eee';
+  ctx.fillText('📦 '+Math.floor(distance)+'m percorridos',GW/2,134);
+  ctx.fillText('🪙 '+coinsCount+' moedas',GW/2,162);
+
+  if(distance>=best&&distance>0){
+    ctx.font='bold 15px monospace';ctx.fillStyle='#FFD700';
+    ctx.shadowColor='#FFD700';ctx.shadowBlur=10;
+    ctx.fillText('🏆 NOVO RECORDE!',GW/2,196);
+    ctx.shadowBlur=0;
+  } else if(best>0){
+    ctx.font='13px monospace';ctx.fillStyle='#aaa';
+    ctx.fillText('Recorde: '+best+'m por '+(top[0].name||''),GW/2,196);
+  }
+
+  if(frame%52<28){
+    ctx.font='bold 16px monospace';ctx.fillStyle='#FFD700';
+    ctx.fillText('ESPAÇO / TOQUE → jogar novamente',GW/2,230);
+  }
+  ctx.font='14px monospace';ctx.fillStyle='#adf';
+  ctx.fillText('R → ver ranking completo',GW/2,256);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+//  DRAW PAUSE
+// ══════════════════════════════════════════
+function drawPause(){
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,20,.7)';ctx.fillRect(0,0,GW,GH);
+  rrect(GW/2-140,GH/2-55,280,112,14);
+  ctx.fillStyle='rgba(0,15,70,.95)';ctx.fill();
+  ctx.strokeStyle='rgba(50,140,255,.8)';ctx.lineWidth=2;ctx.stroke();
+  ctx.textAlign='center';ctx.font='bold 28px monospace';ctx.fillStyle='#fff';
+  ctx.fillText('⏸  PAUSADO',GW/2,GH/2-6);
+  ctx.font='13px monospace';ctx.fillStyle='#adf';
+  ctx.fillText('ESPAÇO / P / ESC para continuar',GW/2,GH/2+26);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════
+//  UTIL
+// ══════════════════════════════════════════
+function rrect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+
+// ══════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════
+function draw(){
+  ctx.clearRect(0,0,GW,GH);
+  if(state==='title'){ drawTitle(); return; }
+  if(state==='gameover'){ drawGameOver(); return; }
+  drawBG(bgX);
+  drawPickups();drawCoins();drawObs();drawPlayer();drawHUD();
+  if(state==='paused') drawPause();
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+
+function gameInit(){
+  document.getElementById('pauseBtn').style.display='none';
+  loop();
+}
+</script>
+</body>
+</html>
