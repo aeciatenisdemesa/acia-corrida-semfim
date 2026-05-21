@@ -328,7 +328,8 @@ function handleTap(gx,gy){
     if(inRect(gx,gy,TBTN.choose)){ state='charselect'; return; }
     if(inRect(gx,gy,TBTN.ranking)){ showRanking(); return; }
     if(inRect(gx,gy,TBTN.start)){
-      resetGame(CHARACTERS[Math.floor(Math.random()*CHARACTERS.length)]); return;
+      const pool=CHARACTERS.filter(c=>c.id!==activeChar.id);
+      resetGame(pool[Math.floor(Math.random()*pool.length)]); return;
     }
     return;
   }
@@ -365,7 +366,7 @@ function togglePause(){
 document.addEventListener('keydown',e=>{
   if(e.code==='Space'||e.code==='ArrowUp'){
     e.preventDefault();
-    if(state==='title'){ resetGame(CHARACTERS[Math.floor(Math.random()*CHARACTERS.length)]); return; }
+    if(state==='title'){ const pool=CHARACTERS.filter(c=>c.id!==activeChar.id); resetGame(pool[Math.floor(Math.random()*pool.length)]); return; }
     if(state==='gameover'){ resetGame(); return; }
     if(state==='paused'){ togglePause(); return; }
     if(state==='playing'&&!player.jumping&&!player.dead){ player.vy=JUMP_VY; player.jumping=true; }
