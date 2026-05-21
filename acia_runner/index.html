@@ -106,13 +106,15 @@ const IMG = {
   quadro:'assets/quadro_coracao.png',
 };
 // frames, balões e cards de cada personagem
+const TELA_DIR = encodeURIComponent('tela de seleção');
 CHARACTERS.forEach(c=>{
+  const dir = encodeURIComponent(c.dir);
   for(let i=1;i<=8;i++){
     const n=i<10?'0'+i:''+i;
-    IMG[c.id+'_f'+n]='assets/personagens/'+c.dir+'/'+c.pfx+'_'+n+'.png';
+    IMG[c.id+'_f'+n]='assets/personagens/'+dir+'/'+c.pfx+'_'+n+'.png';
   }
-  IMG[c.id+'_bal']='assets/personagens/'+c.dir+'/'+c.bal+'.png';
-  IMG[c.id+'_card']='assets/tela de seleção/images/'+c.card+'.png';
+  IMG[c.id+'_bal']='assets/personagens/'+dir+'/'+c.bal+'.png';
+  IMG[c.id+'_card']='assets/'+TELA_DIR+'/images/'+c.card+'.png';
 });
 
 // ══════════════════════════════════════════
@@ -173,8 +175,12 @@ function removeBlack(img, thresh=55){
 
 Object.entries(IMG).forEach(([k,src])=>{
   const im = new Image();
-  im.onload = im.onerror = ()=>{
+  im.onload = ()=>{
     loaded[k] = REMOVE_BLACK.includes(k) ? removeBlack(im) : im;
+    if(++loadCount >= totalImgs) gameInit();
+  };
+  im.onerror = ()=>{
+    loaded[k] = null;
     if(++loadCount >= totalImgs) gameInit();
   };
   im.src = src;
