@@ -15,6 +15,11 @@ canvas{display:block;cursor:pointer;image-rendering:pixelated;image-rendering:cr
   width:40px;height:40px;border-radius:8px;cursor:pointer;
   display:none;align-items:center;justify-content:center;z-index:9}
 #pauseBtn:hover{background:rgba(0,80,200,.7)}
+#fsBtn{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.55);
+  border:2px solid rgba(255,255,255,.4);color:#fff;font:bold 18px monospace;
+  width:40px;height:40px;border-radius:8px;cursor:pointer;
+  display:none;align-items:center;justify-content:center;z-index:9}
+#fsBtn:hover{background:rgba(0,80,200,.7)}
 /* Ranking overlay */
 #rankOverlay{position:absolute;inset:0;background:rgba(0,5,30,.93);
   display:none;flex-direction:column;align-items:center;
@@ -49,6 +54,7 @@ canvas{display:block;cursor:pointer;image-rendering:pixelated;image-rendering:cr
 <div id="wrap">
   <canvas id="c"></canvas>
   <button id="pauseBtn">⏸</button>
+  <button id="fsBtn" title="Tela cheia">⛶</button>
   <div id="rankOverlay">
     <h2>🏆 RANKING — CORRIDA SEM FIM</h2>
     <table id="rankTable">
@@ -300,6 +306,40 @@ document.addEventListener('keydown',e=>{
 });
 canvas.addEventListener('pointerdown',e=>{e.preventDefault();doJump();},{passive:false});
 document.getElementById('pauseBtn').addEventListener('click',e=>{e.stopPropagation();togglePause();});
+
+// ── Tela cheia + orientação (apenas mobile) ──────────────────
+(function(){
+  const isMobile='ontouchstart'in window||navigator.maxTouchPoints>0;
+  const btn=document.getElementById('fsBtn');
+  if(!isMobile||!btn) return;
+  btn.style.display='flex';
+
+  function isFs(){return !!(document.fullscreenElement||document.webkitFullscreenElement);}
+  function updateBtn(){
+    btn.textContent=isFs()?'✕':'⛶';
+    btn.title=isFs()?'Sair da tela cheia':'Tela cheia';
+  }
+  async function toggleFs(){
+    try{
+      if(!isFs()){
+        const el=document.documentElement;
+        if(el.requestFullscreen) await el.requestFullscreen();
+        else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        if(screen.orientation&&screen.orientation.lock)
+          await screen.orientation.lock('landscape').catch(()=>{});
+      }else{
+        if(document.exitFullscreen) await document.exitFullscreen();
+        else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+        if(screen.orientation&&screen.orientation.unlock)
+          screen.orientation.unlock();
+      }
+    }catch(e){}
+    updateBtn();
+  }
+  document.addEventListener('fullscreenchange',updateBtn);
+  document.addEventListener('webkitfullscreenchange',updateBtn);
+  btn.addEventListener('click',e=>{e.stopPropagation();toggleFs();});
+})();
 
 // ══════════════════════════════════════════
 //  OBSTACLES / ITEMS
