@@ -14,12 +14,14 @@ Funciona 100% no navegador, desktop e mobile.
 acia_runner/
 ├── index.html          ← jogo completo (código JS inline)
 └── assets/             ← todos os PNGs do jogo
-    ├── personagem_01.png   (frame 1 de 6 — animação de corrida)
+    ├── personagem_01.png   (frame 1 de 8 — animação de corrida)
     ├── personagem_02.png   (frame 2)
     ├── personagem_03.png   (frame 3)
     ├── personagem_04.png   (frame 4)
     ├── personagem_05.png   (frame 5)
     ├── personagem_06.png   (frame 6)
+    ├── personagem_07.png   (frame 7)
+    ├── personagem_08.png   (frame 8)
     ├── cidade.png          (background do jogo em loop — 4832×953px)
     ├── inicio.png          (background da tela inicial — fachada da loja — 2442×954px)
     ├── titulo.png          (logo "Corrida Sem Fim A&CIA Móveis" — 2150×741px)
@@ -69,7 +71,7 @@ acia_runner/
 
 ### Personagem
 - Corre automaticamente no meio da rua (`GROUND_Y = 269` no canvas 800×380)
-- 6 frames de animação (`personagem_01.png` a `personagem_06.png`) em loop
+- 8 frames de animação (`personagem_01.png` a `personagem_08.png`) em loop
 - FPS da animação aumenta com a velocidade do jogo
 - Pisca durante invencibilidade
 - Trilha de fantasmas ao pegar o buster

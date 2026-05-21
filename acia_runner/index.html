@@ -77,6 +77,8 @@ const IMG = {
   f04:"assets/personagem_04.png",
   f05:"assets/personagem_05.png",
   f06:"assets/personagem_06.png",
+  f07:"assets/personagem_07.png",
+  f08:"assets/personagem_08.png",
   escudo:"assets/escudo.png",
   efeito:"assets/efeito_escudo.png",
   life:"assets/coracao.png",
@@ -355,7 +357,7 @@ function updateGame(){
 
     player.ft++;
     const fps=Math.min(6+Math.floor(speed),14);
-    if(player.ft>=Math.round(60/fps)){player.ft=0;player.fr=(player.fr+1)%6;}
+    if(player.ft>=Math.round(60/fps)){player.ft=0;player.fr=(player.fr+1)%8;}
 
     if(hasShield){shieldTimer--;if(shieldTimer<=0)hasShield=false;}
     if(invTimer>0) invTimer--;
